@@ -1,239 +1,265 @@
 package core;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 import java.util.Date;
-
-import javax.swing.JScrollPane;
-
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
-import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
-
-public class Connect4Server extends Application {
-	public static final int PLAYER1 = 1; // Indicates player1
-	public static final int PLAYER2 = 2; // Indicates player2
-	public static final int PLAYER1_WON = 1; // Indicates player1 won
-	public static final int PLAYER2_WON = 2; // Indicates player2 won
-	public static final int DRAW = 3; // Indicates a draw
-	public static final int CONTINUE = 4; // Indicates game continues
-	public static final char PLAYER1_TOKEN = 'X';
-	public static final char PLAYER2_TOKEN = 'O';
-
-	
-	ServerSocket socket;
-	int sessionNum = 1;
-
-	@Override
-	public void start(Stage primaryStage) throws Exception {
-
-		// Implement partial GUI here?
-		TextArea connectionLog = new TextArea();
-		Scene scene = new Scene(new ScrollPane(connectionLog), 300, 300);
-		primaryStage.setScene(scene);
-		primaryStage.setTitle("Connect 4 Server");
-		primaryStage.show();
-
-		new Thread(() -> {
-			try {
-				// Create a Server socket connection
-				socket = new ServerSocket(8004);
-				Platform.runLater(
-						() -> connectionLog.appendText(new Date() + "\n Server connection established at " + socket.getLocalPort()));
-
-				// handle 2 players connecting
-				while (true) {
-
-					Platform.runLater(() -> {
-						connectionLog.appendText("\nWaiting for 2 players to connect to: " + sessionNum + "\n");
-					});
-					Socket player1 = socket.accept();
-
-					Platform.runLater(() -> {
-						connectionLog.appendText(new Date() + "Player 1 is connected to " + sessionNum + "\n");
-						connectionLog.appendText(
-								"\nPlayer1's IP address: " + player1.getInetAddress().getHostAddress() + "\n");
-
-					});
-					// Indicate the new player is player1
-					new DataOutputStream(player1.getOutputStream()).writeInt(PLAYER1);
-
-					// Connect to player2
-					Socket player2 = socket.accept();
-
-					Platform.runLater(() -> {
-						connectionLog.appendText("\nPlayer 2 is now connection to " + sessionNum + "\n");
-						connectionLog.appendText("Player2's IP address: " + player2.getInetAddress().getHostAddress());
-
-					});
-					new DataOutputStream(player2.getOutputStream()).writeInt(PLAYER2);
-
-					// Display session and increment session number
-					Platform.runLater(() -> {
-						connectionLog.appendText(new Date() + "Let's start a new session! Session " + sessionNum++);
-					});
-					// Launch the new Thread
-					new Thread(new currentSession(player1, player2)).start();
-
-				}
-
-			} catch (IOException e) {
-				e.printStackTrace();
+/**
+ * The server class of the Connect4 game
+ * 
+ * @author Matthew Nowe
+ * @version version1
+ *
+ */
+public class Connect4Server extends Application implements Connect4Constants 
+{
+  /** number of the session */
+  private int sessionNo = 1;
+  /**
+   * The start of the program where the stage will be set up
+   * 
+   * @param stage the stage of the program
+   */
+  @Override 
+  public void start(Stage stage) {
+    TextArea taLog = new TextArea();
+    Scene scene = new Scene(new ScrollPane(taLog), 450, 200);
+    stage.setTitle("Connect4Server"); 
+    stage.setScene(scene);
+    stage.show();
+    new Thread( () -> 
+    {
+      try {
+        ServerSocket serverSocket = new ServerSocket(8004);
+        Platform.runLater(() -> taLog.appendText(new Date() + ": Server started at socket 8004\n"));
+        while (true) 
+        {
+          Platform.runLater(() -> taLog.appendText(new Date() + ": Wait for players to join session " + sessionNo + '\n'));
+          Socket player1 = serverSocket.accept();
+          Platform.runLater(() -> {
+        	  taLog.appendText(new Date() + ": Player 1 joined session " + sessionNo + '\n');
+        	  taLog.appendText("Player 1's IP address" + player1.getInetAddress().getHostAddress() + '\n');
+          });
+          new DataOutputStream(
+            player1.getOutputStream()).writeInt(PLAYER1);
+          Socket player2 = serverSocket.accept();
+          Platform.runLater(() -> {
+            taLog.appendText(new Date() + ": Player 2 joined session " + sessionNo + '\n');
+            taLog.appendText("Player 2's IP address" + player2.getInetAddress().getHostAddress() + '\n');
+          });
+          new DataOutputStream(player2.getOutputStream()).writeInt(PLAYER2);
+          Platform.runLater(() -> 
+          taLog.appendText(new Date() + ": Start a thread for session " + sessionNo++ + '\n'));
+          new Thread(new HandleASession(player1, player2)).start();
+        }
+      }
+      catch(IOException ex)
+      {
+        ex.printStackTrace();
+      }
+    }).start();
+  }
+  /**
+   * Class that will handle session
+   * 
+   * @author Matthew Nowe
+   *
+   */
+  class HandleASession implements Runnable, Connect4Constants 
+  {
+	/** an instance variable that will resemble player 1 */
+    private Socket player1;
+    /** an instance variable that will resemble player 2 */
+    private Socket player2;
+    /** an instance variable that will resemble the Connect4 board*/
+    private char[][] board =  new char[6][7];
+    /** 
+     * Construct a thread
+     * 
+     * @param player1 the first player of the game
+     * @param player2 the second player of the game
+     */
+    public HandleASession(Socket player1, Socket player2) 
+    {
+      this.player1 = player1;
+      this.player2 = player2;
+      for (int row = 0; row < 6; row++)
+      {
+        for (int col = 0; col < 7; col++)
+        {
+          board[row][col] = ' ';
+        }
+      }
+    }
+    /** 
+     * Implements the run() method for the thread 
+     * 
+     */
+    public void run() 
+    {
+      try {
+        DataInputStream fromPlayer1 = new DataInputStream(player1.getInputStream());
+        DataOutputStream toPlayer1 = new DataOutputStream(player1.getOutputStream());
+        DataInputStream fromPlayer2 = new DataInputStream(player2.getInputStream());
+        DataOutputStream toPlayer2 = new DataOutputStream(player2.getOutputStream());
+        toPlayer1.writeInt(1);
+        while (true) 
+        {
+          int row = fromPlayer1.readInt();
+          int column = fromPlayer1.readInt();
+          board[row][column] = 'X';
+          if (winner('X')) 
+          {
+            toPlayer1.writeInt(PLAYER1_WON);
+            toPlayer2.writeInt(PLAYER1_WON);
+            sendMove(toPlayer2, row, column);
+            break;
+          }
+          else 
+          {
+            toPlayer2.writeInt(CONTINUE);
+            sendMove(toPlayer2, row, column);
+          }
+          row = fromPlayer2.readInt();
+          column = fromPlayer2.readInt();
+          board[row][column] = 'O';
+          if (winner('O')) 
+          {
+            toPlayer1.writeInt(PLAYER2_WON);
+            toPlayer2.writeInt(PLAYER2_WON);
+            sendMove(toPlayer1, row, column);
+            break;
+          }
+          else if (isFull()) 
+          {
+              toPlayer1.writeInt(DRAW);
+              toPlayer2.writeInt(DRAW);
+              sendMove(toPlayer2, row, column);
+              break;
+          }
+          else 
+          {
+            toPlayer1.writeInt(CONTINUE);
+            sendMove(toPlayer1, row, column);
+          }
+        }
+      }
+      catch(IOException ex) {
+        ex.printStackTrace();
+      }
+    }
+    /** 
+     * Sends the move to other player 
+     * 
+     * @param out the data output stream that will send the row and column indexes
+     * @param row the row that will be sent
+     * @param column the column that will be sent
+     */
+    private void sendMove(DataOutputStream out, int row, int column) throws IOException 
+    {
+      out.writeInt(row);
+      out.writeInt(column);
+    }
+    /** 
+     * Determines if the cells are all occupied 
+     * 
+     * @returns true/if full, false/if not full
+     */
+    private boolean isFull() 
+    {
+    	int row = 6;
+    	int column = 7;
+    	for (int i = 0; i < row; i++)
+    	{
+    		for (int j = 0; j < column; j++)
+    		{
+    			if (board[i][j] == ' ')
+    			{
+    				return false; 
+    			}
+    		}
+    	}
+    	return true;
+    }
+    /**
+     *  Determines if the player with the specified token wins
+     *  
+     *  @param token the character that will determine if the piece is red or yellow
+     *  
+     *  @return true/if winner is found, false/if not
+     *  
+     */
+	private boolean winner(char token) 
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			for (int i = 0; i < 6; i++) 
+			{
+				if (board[i][j] == token && board[i][j + 1] == token && board[i][j + 2] ==  token && board[i][j + 3] == token) 
+				{
+					return true;
+		        }
+		    }
+		}
+		//checking for horizontal
+		for (int i = 0; i < 3; i++) 
+		{
+			for (int j = 0; j < 7; j++) 
+			{
+				if (board[i][j] == token && board[i + 1][j] == token && board[i + 2][j] == token && board[i + 3][j] == token)
+				{
+					return true;
+		        }
 			}
-		}).start();
-
-	}
-
-	class currentSession implements Runnable {
-
-		private Socket player1;
-		private Socket player2;
-		DataInputStream fromPlayer1, fromPlayer2;
-		DataOutputStream toPlayer1, toPlayer2;
-		private char[][] board = new char[6][7];
-
-		// continue play
-		private boolean continueToPlay = true;
-
-		/** Construct Thread */
-		public currentSession(Socket player1, Socket player2) {
-			this.player1 = player1;
-			this.player2 = player2;
-
-			// Initialize board
-			for (int i = 0; i < board.length; i++) {
-				for (int j = 0; j < board[i].length; j++) {
-					board[i][j] = ' ';
+		}
+		//checking for vertical
+		for (int i = 3; i < 6; i++)
+		{
+			for (int j = 0; j < 4; j++)
+			{
+				if (board[i][j] == token && board[i - 1][j + 1] == token && board[i - 2][j + 2] == token && board[i - 3][j + 3] == token)
+				{        
+					return true;
+		        }
+		    }
+		}
+		//checking for diagonal ascending
+		for (int i = 3; i < 6; i++) 
+		{
+			for (int j = 3; j < 7; j++) 
+			{
+				if (board[i][j] == token && board[i - 1][j - 1] == token && board[i - 2][j - 2] == token && board[i - 3][j - 3] == token)
+				{
+					return true;
+				}
+			}
+		} 
+		//checking for diagonal descending
+		for (int j = 0; j < 4; j++) 
+		{
+			for (int i = 0; i < 6; i++)
+			{
+				if (board[i][j] == token && board[i][j + 1] == token && board[i][j + 2] == token && board[i][j + 3] == token) 
+				{
+					return true;
 				}
 			}
 		}
-
-		/** Implement the run() method */
-		public void run() {
-			try {
-				fromPlayer1 = new DataInputStream(player1.getInputStream());
-				fromPlayer2 = new DataInputStream(player2.getInputStream());
-				toPlayer1 = new DataOutputStream(player1.getOutputStream());
-				toPlayer2 = new DataOutputStream(player2.getOutputStream());
-
-				toPlayer1.writeInt(1);
-
-				// Server loop to continually play the game
-				while (true) {
-					int row = fromPlayer1.readInt();
-					int column = fromPlayer1.readInt();
-					board[row][column] = PLAYER1_TOKEN;
-
-					// check if Player1 wins
-					if (isWon(PLAYER1_TOKEN)) {
-						toPlayer1.writeInt(PLAYER1_WON);
-						toPlayer2.writeInt(PLAYER1_WON);
-						sendMove(toPlayer2, row, column);
-						break;
-					} else if (isFull()) {
-						toPlayer1.writeInt(DRAW);
-						toPlayer2.writeInt(DRAW);
-						sendMove(toPlayer2, row, column);
-						break;
-					} else {
-						// prompt player2 to make a move
-						toPlayer2.writeInt(CONTINUE);
-
-						// send player1's move to player2
-						sendMove(toPlayer2, row, column);
-
-						row = fromPlayer2.readInt();
-						column = fromPlayer2.readInt();
-						board[row][column] = PLAYER2_TOKEN;
-
-						// check if Player 2 wins
-						if (isWon(PLAYER2_TOKEN)) {
-							toPlayer1.writeInt(PLAYER2_WON);
-							toPlayer2.writeInt(PLAYER2_WON);
-							sendMove(toPlayer1, row, column);
-							break;
-
-						} else {
-							toPlayer1.writeInt(CONTINUE);
-
-							// Send player 2's move to player1
-							sendMove(toPlayer1, row, column);
-						}
-
-					}
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
-		private void sendMove(DataOutputStream out, int row, int column) throws IOException {
-			out.writeInt(row);
-			out.writeInt(column);
-		}
-
-		private boolean isFull() {
-			for (int i = 0; i < 6; i++) {
-				for (int j = 0; j < 8; j++) {
-					if (board[i][j] == ' ')
-						;
-					return false;
-				}
-			}
-			return true;
-		}
-
-		private boolean isWon(char token) {
-			// Check all columns
-			for (int i = 0; i < board.length; i++) {
-				for (int j = 0; j < board[i].length; j++) {
-					if (board[i][j] == token && board[i][j] == board[i + 1][j] && board[i][j] == board[i + 2][j]
-							&& board[i][j] == board[i + 3][j]) {
-						return true;
-					}
-				}
-			}
-			// Check all rows
-			for (int i = 0; i < board.length; i++) {
-				for (int j = 0; j < board[i].length; j++) {
-					if (board[i][j] == token && board[i][j] == board[i][j + 1] && board[i][j] == board[i][j + 2]
-							&& board[i][j] == board[i][j + 3]) {
-						return true;
-					}
-				}
-			}
-			// Check Diagonal - top Left
-			for (int i = 0; i < board.length; i++) {
-				for (int j = 0; j < board[i].length; j++) {
-					if (board[i][j] == token && board[i][j] == board[i+1][j + 1] && board[i][j] == board[i+2][j + 2]
-							&& board[i][j] == board[i+3][j + 3]) {
-						return true;
-					}
-				}
-
-			}
-			//check diagonal top right
-			for (int i = 0; i < board.length; i++) {
-				for (int j = 0; j < board[i].length; j++) {
-					if (board[i][j] == token && board[i][j] == board[i+1][j - 1] && board[i][j] == board[i+2][j-2]
-							&& board[i][j] == board[i+3][j-3]) {
-						return true;
-					}
-				}
-
-			}
-			return false;
-		}
-	}
-	public static void main(String[] args) {
-		launch(args);
-	}
+		return false;
+	}	
+  }
+  /**
+   * The main method is only needed for the IDE with limited
+   * JavaFX support. Not needed for running from the command line.
+   * 
+   * @param args a string array
+   */
+  public static void main(String[] args) 
+  {
+    launch(args);
+  }
 }
-
